@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>打者分析ダッシュボード</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f5f0e8;--ink:#1a1410;--mid:#8a7a6a;--pale:#e8e0d0;--card:#faf7f2;--border:#d0c8b8;--red:#c8341c;--blue:#1c4c8c;--green:#1c6c3c;--amber:#b06010;--yellow:#e8b020}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Zen Kaku Gothic New',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+#importScreen{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px}
+#importScreen.hidden{display:none}
+.import-box{width:100%;max-width:680px}
+.import-title{font-size:44px;font-weight:900;line-height:1;letter-spacing:-1px;margin-bottom:10px}
+.import-title em{font-style:normal;color:var(--red);border-bottom:4px solid var(--red)}
+.import-sub{font-size:13px;color:var(--mid);margin-bottom:24px;line-height:1.7}
+.import-textarea{width:100%;height:240px;background:var(--card);border:2px solid var(--border);border-radius:4px;padding:16px;font-family:'DM Mono',monospace;font-size:12px;color:var(--ink);resize:vertical;outline:none}
+.import-textarea:focus{border-color:var(--ink)}
+.import-textarea::placeholder{color:var(--mid)}
+.import-actions{display:flex;gap:12px;margin-top:12px}
+.import-btn{padding:12px 28px;background:var(--ink);color:var(--bg);border:none;font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer;font-family:'Zen Kaku Gothic New',sans-serif;border-radius:2px}
+.import-err{font-size:12px;color:var(--red);font-family:'DM Mono',monospace;margin-top:8px;min-height:18px}
+#dashboard{display:none}
+#dashboard.visible{display:block}
+.wrap{max-width:1200px;margin:0 auto;padding:0 28px}
+header{border-bottom:3px solid var(--ink);padding:32px 0 20px;margin-bottom:36px}
+.header-grid{display:grid;grid-template-columns:1fr auto;align-items:end;gap:24px}
+h1{font-size:clamp(24px,4vw,44px);font-weight:900;line-height:1.1;letter-spacing:-1px}
+h1 em{font-style:normal;color:var(--red);border-bottom:3px solid var(--red)}
+.header-meta{font-family:'DM Mono',monospace;font-size:12px;color:var(--mid);text-align:right;line-height:1.8}
+.reload-btn{margin-top:6px;padding:5px 12px;background:transparent;border:1.5px solid var(--border);border-radius:2px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px;font-family:'Zen Kaku Gothic New',sans-serif;color:var(--mid)}
+.reload-btn:hover{border-color:var(--ink);color:var(--ink)}
+.player-selector{margin-bottom:36px}
+.selector-label{font-size:11px;font-weight:700;letter-spacing:3px;color:var(--mid);margin-bottom:10px}
+.player-chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:6px 16px;border:1.5px solid var(--border);background:var(--card);border-radius:2px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Zen Kaku Gothic New',sans-serif;position:relative}
+.chip:hover{border-color:var(--ink)}
+.chip.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip .bat-ind{position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;border:1.5px solid var(--bg)}
+.chip .bat-ind.right{background:var(--blue)}.chip .bat-ind.left{background:var(--red)}
+.sticky-nav{position:sticky;top:0;background:var(--bg);border-bottom:2px solid var(--ink);z-index:100;margin-bottom:36px}
+.nav-inner{display:flex;overflow-x:auto}
+.nav-btn{padding:13px 18px;background:transparent;border:none;font-size:11px;font-weight:700;letter-spacing:2px;cursor:pointer;border-bottom:3px solid transparent;color:var(--mid);font-family:'Zen Kaku Gothic New',sans-serif;white-space:nowrap;margin-bottom:-2px}
+.nav-btn:hover{color:var(--ink)}
+.nav-btn.active{color:var(--ink);border-bottom-color:var(--red)}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+.section{margin-bottom:48px}
+.section-head{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:10px;border-bottom:1.5px solid var(--border)}
+.section-num{font-family:'DM Mono',monospace;font-size:11px;color:var(--mid);background:var(--pale);padding:2px 8px;border-radius:2px}
+.section-title{font-size:15px;font-weight:900;letter-spacing:1px}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:2px;margin-bottom:2px}
+.stat-box{background:var(--card);border:1.5px solid var(--border);padding:18px 14px;position:relative;overflow:hidden}
+.stat-box::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.stat-box.s-red::before{background:var(--red)}.stat-box.s-blue::before{background:var(--blue)}
+.stat-box.s-green::before{background:var(--green)}.stat-box.s-amber::before{background:var(--amber)}
+.stat-box.s-yellow::before{background:var(--yellow)}.stat-box.s-ink::before{background:var(--ink)}
+.stat-val{font-family:'DM Mono',monospace;font-size:32px;font-weight:500;line-height:1;margin-bottom:5px}
+.stat-lbl{font-size:11px;color:var(--mid);font-weight:700;letter-spacing:1px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.card{background:var(--card);border:1.5px solid var(--border);padding:18px}
+.card-title{font-size:13px;font-weight:900;margin-bottom:14px;letter-spacing:1px}
+.bd-row{display:grid;grid-template-columns:88px 1fr 60px;align-items:center;gap:10px;margin-bottom:8px}
+.bd-label{font-size:12px;font-weight:700}
+.bd-track{height:16px;background:var(--pale);border-radius:1px;overflow:hidden}
+.bd-fill{height:100%;border-radius:1px;display:flex;align-items:center;padding-left:6px;font-size:10px;font-weight:700;color:white;font-family:'DM Mono',monospace}
+.bd-count{font-family:'DM Mono',monospace;font-size:11px;text-align:right;color:var(--mid)}
+.rank-table{width:100%;border-collapse:collapse}
+.rank-table thead th{padding:8px 12px;text-align:right;font-size:10px;letter-spacing:2px;font-weight:700;color:var(--mid);border-bottom:2px solid var(--ink);white-space:nowrap}
+.rank-table thead th:first-child{text-align:left}
+.rank-table tbody tr{border-bottom:1px solid var(--pale)}
+.rank-table tbody tr:hover{background:var(--pale)}
+.rank-table td{padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px}
+.rank-table td:first-child{text-align:left;font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700}
+.rank-num{display:inline-block;width:20px;height:20px;border-radius:50%;background:var(--pale);text-align:center;line-height:20px;font-size:11px;margin-right:6px;font-family:'DM Mono',monospace;font-weight:700}
+.rank-num.top1{background:var(--amber);color:white}
+.rank-num.top2{background:var(--mid);color:white}
+.rank-num.top3{background:#a07050;color:white}
+.hi-r{color:var(--red);font-weight:700}.hi-b{color:var(--blue);font-weight:700}.hi-g{color:var(--green);font-weight:700}
+.rank-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.rcat-btn{padding:5px 14px;border:1.5px solid var(--border);background:var(--card);border-radius:2px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px;font-family:'Zen Kaku Gothic New',sans-serif}
+.rcat-btn:hover{border-color:var(--ink)}
+.rcat-btn.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+@media(max-width:600px){
+  .wrap{padding:0 10px}.import-title{font-size:32px}.import-textarea{height:180px}
+  h1{font-size:26px}.header-grid{grid-template-columns:1fr;gap:6px}.header-meta{text-align:left}
+  .stats-row{grid-template-columns:repeat(2,1fr)}.stat-val{font-size:24px}.two-col{grid-template-columns:1fr}
+  .nav-btn{padding:11px 12px;font-size:10px;letter-spacing:1px}
+  .bd-row{grid-template-columns:72px 1fr 52px;gap:6px}
+  .rank-table{font-size:11px}.rank-table thead th,.rank-table td{padding:6px 7px}
+  #fieldCanvas{width:100%!important;height:auto!important}
+  .chip{font-size:12px;padding:5px 12px}.rcat-btn{font-size:10px;padding:4px 10px}
+}
+</style>
+</head>
+<body>
+
+<div id="importScreen">
+  <div class="import-box">
+    <div class="import-title">打者<em>分析</em><br>ダッシュボード</div>
+    <div class="import-sub">JSONデータを貼り付けてください。</div>
+    <textarea class="import-textarea" id="jsonInput" placeholder='{"players":[...], "playerBatSide":{...}, "allData":[...]}' spellcheck="false"></textarea>
+    <div class="import-err" id="importErr"></div>
+    <div class="import-actions">
+      <button class="import-btn" onclick="applyJSON()">データを読み込む</button>
+    </div>
+  </div>
+</div>
+
+<div id="dashboard">
+<div class="wrap">
+  <header>
+    <div class="header-grid">
+      <h1>打者<em>分析</em><br>ダッシュボード</h1>
+      <div class="header-meta" id="headerMeta"></div>
+    </div>
+  </header>
+  <div class="player-selector">
+    <div class="selector-label">選手を選択</div>
+    <div class="player-chips" id="playerChips"></div>
+  </div>
+</div>
+<div class="sticky-nav"><div class="wrap"><div class="nav-inner">
+  <button class="nav-btn active" onclick="switchTab('overview',this)">01 全体概要</button>
+  <button class="nav-btn" onclick="switchTab('patience',this)">02 選球眼</button>
+  <button class="nav-btn" onclick="switchTab('batted',this)">03 打球分析</button>
+  <button class="nav-btn" onclick="switchTab('ranking',this)">04 ランキング</button>
+  <button class="nav-btn" onclick="switchTab('profile',this)">05 個人成績</button>
+  <button class="nav-btn" onclick="switchTab('lineup',this)">06 打順編成</button>
+</div></div></div>
+<div class="wrap">
+
+<div class="tab-pane active" id="tab-overview">
+  <div class="section">
+    <div class="section-head"><span class="section-num">01-A</span><span class="section-title">投球アクション内訳</span></div>
+    <div class="stats-row" id="pitchActionStats"></div>
+  </div>
+  <div class="section">
+    <div class="section-head"><span class="section-num">01-B</span><span class="section-title">ストライク・ボール球への反応</span></div>
+    <div class="two-col">
+      <div class="card"><div class="card-title">ストライク球</div><div id="strikeBreakdown"></div></div>
+      <div class="card"><div class="card-title">ボール球</div><div id="ballBreakdown"></div></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-head"><span class="section-num">01-C</span><span class="section-title">初球傾向</span></div>
+    <div class="stats-row" id="firstPitchStats"></div>
+  </div>
+</div>
+
+<div class="tab-pane" id="tab-patience">
+  <div class="section">
+    <div class="section-head"><span class="section-num">02-A</span><span class="section-title">選手別 選球眼指標</span></div>
+    <div class="card" style="overflow-x:auto">
+      <table class="rank-table">
+        <thead><tr><th style="text-align:left">選手</th><th>打席</th><th>球/打席</th><th>選球眼率</th><th>悪球空振率</th><th>四球率</th><th>三振率</th><th>BB/K</th></tr></thead>
+        <tbody id="patienceBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-head"><span class="section-num">02-B</span><span class="section-title">平均投球数ランキング</span></div>
+    <div class="card" id="patienceBars"></div>
+  </div>
+</div>
+
+<div class="tab-pane" id="tab-batted">
+  <div class="section">
+    <div class="section-head"><span class="section-num">03-A</span><span class="section-title">打球種類</span></div>
+    <div class="two-col">
+      <div class="card"><div class="card-title">種類別 件数</div><div id="battedTypeCount"></div></div>
+      <div class="card"><div class="card-title">種類別 打率</div><div id="battedTypeAvg"></div></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-head"><span class="section-num">03-B</span><span class="section-title">打球方向</span></div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+      <div>
+        <canvas id="fieldCanvas" width="400" height="380" style="display:block;border:1.5px solid var(--border);border-radius:4px"></canvas>
+        <div id="fieldCaption" style="margin-top:6px;font-size:10px;color:var(--mid);text-align:center;font-family:'DM Mono',monospace">打球方向マップ</div>
+      </div>
+      <div style="flex:1;min-width:240px">
+        <div class="card" style="margin-bottom:16px"><div class="card-title">方向別 件数</div><div id="battedDirCount"></div></div>
+        <div class="card"><div class="card-title">方向別 打率</div><div id="battedDirAvg"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-head"><span class="section-num">03-C</span><span class="section-title">選手別 打球傾向</span></div>
+    <div class="card" style="overflow-x:auto">
+      <table class="rank-table">
+        <thead><tr><th style="text-align:left">選手</th><th>打数</th><th>ゴロ%</th><th>フライ%</th><th>ライナー%</th><th>引張%</th><th>センター%</th><th>流し%</th><th>GB/FB</th></tr></thead>
+        <tbody id="battedPlayerBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="tab-pane" id="tab-ranking">
+  <div class="section">
+    <div class="section-head"><span class="section-num">04</span><span class="section-title">指標別ランキング</span></div>
+    <div style="margin-bottom:10px;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid)">カテゴリ</div>
+    <div class="rank-controls" id="rankCatBtns"></div>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+      <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid)">指標</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;background:var(--pale);padding:6px 14px;border:1.5px solid var(--border);border-radius:2px">
+        <label style="font-size:11px;font-weight:700;color:var(--mid);white-space:nowrap">規定打席</label>
+        <input id="minPAInput" type="number" min="0" value="0" step="1" oninput="renderSingleRank()"
+          style="width:64px;padding:3px 7px;font-family:'DM Mono',monospace;font-size:13px;font-weight:700;border:1.5px solid var(--border);background:var(--card);border-radius:2px;outline:none;color:var(--ink)">
+        <span style="font-size:11px;color:var(--mid)">打席以上</span>
+        <span id="qualifiedCount" style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--blue)"></span>
+      </div>
+    </div>
+    <div class="rank-controls" id="rankMetricBtns"></div>
+    <div id="rankChart" style="margin-bottom:20px"></div>
+    <div class="card" style="overflow-x:auto">
+      <table class="rank-table"><thead id="rankHead"></thead><tbody id="rankBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="tab-pane" id="tab-profile">
+  <div class="section">
+    <div class="section-head"><span class="section-num">05</span><span class="section-title">個人打撃成績</span></div>
+    <div id="profileContent"></div>
+  </div>
+</div>
+
+<div class="tab-pane" id="tab-lineup">
+  <div class="section">
+    <div class="section-head"><span class="section-num">06-A</span><span class="section-title">打順選択（9人まで）</span></div>
+    <div style="font-size:12px;color:var(--mid);margin-bottom:14px">選手をクリックして打順に追加。9人選択後は入れ替えのみ可能。</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:220px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid);margin-bottom:10px">選手一覧</div>
+        <div id="lineupPlayerPool" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid);margin-bottom:10px">打順</div>
+        <div id="lineupOrder" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button onclick="clearLineup()" style="margin-top:14px;padding:7px 18px;background:transparent;border:1.5px solid var(--border);border-radius:2px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px;font-family:'Zen Kaku Gothic New',sans-serif;color:var(--mid)">リセット</button>
+      </div>
+    </div>
+  </div>
+  <div class="section" id="lineupChartSection" style="display:none">
+    <div class="section-head"><span class="section-num">06-B</span><span class="section-title">打順別 OPS・打率 比較</span></div>
+    <div class="card" style="padding:24px 16px">
+      <canvas id="lineupChart" height="320"></canvas>
+    </div>
+    <div class="card" style="margin-top:16px;overflow-x:auto">
+      <table class="rank-table" id="lineupTable">
+        <thead><tr>
+          <th style="text-align:left">打順</th><th style="text-align:left">選手</th>
+          <th>打席</th><th>打率</th><th>出塁率</th><th>長打率</th><th>OPS</th><th>本塁打</th><th>打点</th><th>四球率</th><th>三振率</th>
+        </tr></thead>
+        <tbody id="lineupTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div>
+</div>
+</div>
+
+<script>
+var DATA = null;
+var currentPlayer = 'ALL';
+var rankCat = 'batting';
+var rankMetric = 'avg';
+
+var HITS = ['single','double','triple','homerun'];
+var NO_AB = ['walk','hbp','sacrificefly','interference'];
+var RES_LABELS = {out:'アウト',strikeout:'三振',single:'単打',double:'二塁打',triple:'三塁打',homerun:'本塁打',walk:'四球',error:'エラー',hbp:'死球',sacrificefly:'犠飛',interference:'妨害',fielderschoice:'野選'};
+var RES_COLORS = {single:'#1c6c3c',double:'#1c4c8c',triple:'#804080',homerun:'#c8341c',out:'#6a6a6a',strikeout:'#b02020',walk:'#1c4c8c',error:'#b06010',hbp:'#a04080',sacrificefly:'#608080',interference:'#808040',fielderschoice:'#406080'};
+var TYPE_LABELS = {grounder:'ゴロ',fly:'フライ',liner:'ライナー',other:'その他'};
+var TYPE_COLORS = {grounder:'#b06010',fly:'#1c4c8c',liner:'#1c6c3c',other:'#888'};
+var HD_LABELS = {pull:'引っ張り',cent:'センター',oppo:'流し'};
+var HD_COLORS = {pull:'#c8341c',cent:'#1c4c8c',oppo:'#1c6c3c'};
+
+function pct(v, d) { d = (d === undefined) ? 1 : d; return (v * 100).toFixed(d) + '%'; }
+
+function makeBd(lbl, v, max, col, cnt) {
+  var w = max > 0 ? Math.min(100, v / max * 100) : 0;
+  return '<div class="bd-row"><div class="bd-label">' + lbl + '</div><div class="bd-track"><div class="bd-fill" style="width:' + w + '%;background:' + col + '">' + (w > 12 ? pct(v) : '') + '</div></div><div class="bd-count">' + cnt + '</div></div>';
+}
+
+function normType(t) {
+  if (!t || t === '-') return null;
+  t = t.toLowerCase();
+  if (t.indexOf('grounder') >= 0) return 'grounder';
+  if (t.indexOf('fly') >= 0) return 'fly';
+  if (t.indexOf('liner') >= 0) return 'liner';
+  return t;
+}
+
+function dirToHD(raw, isLeft) {
+  if (!raw || raw === '-') return null;
+  var h = raw.toLowerCase();
+  if (h === 'pull') return 'pull';
+  if (h === 'oppo') return 'oppo';
+  if (h === 'cent') return 'cent';
+  if (h === 'center' || h === 'pitcher' || h === 'second' || h === 'catcher' || h === 'short') return 'cent';
+  if (h === 'left')  return isLeft ? 'oppo' : 'pull';
+  if (h === 'right') return isLeft ? 'pull' : 'oppo';
+  if (h === 'third') return isLeft ? 'oppo' : 'pull';
+  if (h === 'first') return isLeft ? 'pull' : 'oppo';
+  return null;
+}
+
+function getABs(player) {
+  if (player === 'ALL') return DATA.allData;
+  return DATA.allData.filter(function(a) { return a.player === player; });
+}
+
+function getAllPitches(player) {
+  var p = [];
+  getABs(player).forEach(function(ab) {
+    if (!ab.pitchDetails) return;
+    ab.pitchDetails.forEach(function(pd, i) {
+      p.push({ type: pd.type, action: pd.action, isFirst: i === 0 });
+    });
+  });
+  return p;
+}
+
+function calcMetrics(name) {
+  var abs = getABs(name);
+  var pa = abs.length;
+  if (!pa) return null;
+  var tp=0, sC=0, bC=0, swAtS=0, swAtB=0, lkAtB=0, contactS=0;
+  var hits=0, ab=0, tb=0, reach=0, bb=0, so=0, rbi=0, runs=0, sb=0;
+  abs.forEach(function(a) {
+    var isHit = HITS.indexOf(a.result) >= 0;
+    var isNoAB = NO_AB.indexOf(a.result) >= 0;
+    if (!isNoAB) ab++;
+    if (isHit) {
+      hits++;
+      tb += ({single:1, double:2, triple:3, homerun:4}[a.result] || 0);
+    }
+    if (a.result === 'walk') bb++;
+    if (a.result === 'strikeout') so++;
+    if (isHit || a.result === 'walk' || a.result === 'hbp') reach++;
+    rbi += (a.rbis || 0);
+    runs += (a.runs || 0);
+    sb += (a.stolenBase || 0);
+    (a.pitchDetails || []).forEach(function(p) {
+      tp++;
+      var swing = (p.action === 'swing' || p.action === 'foul' || p.action === 'inplay');
+      if (p.type === 'strike') {
+        sC++;
+        if (swing) swAtS++;
+        if (p.action === 'inplay' || p.action === 'foul') contactS++;
+      }
+      if (p.type === 'ball') {
+        bC++;
+        if (swing) swAtB++;
+        else lkAtB++;
+      }
+    });
+  });
+  var avg = ab > 0 ? hits / ab : 0;
+  var obp = pa > 0 ? reach / pa : 0;
+  var slg = ab > 0 ? tb / ab : 0;
+  var hr = abs.filter(function(a) { return a.result === 'homerun'; }).length;
+  var sf = abs.filter(function(a) { return a.result === 'sacrificefly'; }).length;
+  var hbp = abs.filter(function(a) { return a.result === 'hbp'; }).length;
+  var s1 = abs.filter(function(a) { return a.result === 'single'; }).length;
+  var s2 = abs.filter(function(a) { return a.result === 'double'; }).length;
+  var s3 = abs.filter(function(a) { return a.result === 'triple'; }).length;
+  var babipDenom = ab - so - hr + sf || 1;
+  var babip = (hits - hr) / babipDenom;
+  var iso = slg - avg;
+  var woba = (0.69*bb + 0.72*hbp + 0.88*s1 + 1.24*s2 + 1.56*s3 + 2.10*hr) / (pa || 1);
+  return {
+    name: name, pa: pa, ab: ab, hits: hits, bb: bb, so: so, hbp: hbp,
+    rbi: rbi, runs: runs, sb: sb, hr: hr, doubles: s2, triples: s3,
+    totalP: tp, pitchesPerPA: pa ? tp / pa : 0,
+    chaseRate: bC > 0 ? swAtB / bC : 0,
+    ballEyeRate: bC > 0 ? lkAtB / bC : 0,
+    swingRate: (sC + bC) > 0 ? (swAtS + swAtB) / (sC + bC) : 0,
+    strikeSwingRate: sC > 0 ? swAtS / sC : 0,
+    ballSwingRate: bC > 0 ? swAtB / bC : 0,
+    contactRate: swAtS > 0 ? contactS / swAtS : 0,
+    bbRate: pa ? bb / pa : 0,
+    soRate: pa ? so / pa : 0,
+    bbk: so > 0 ? bb / so : (bb > 0 ? 99 : 0),
+    avg: avg, obp: obp, slg: slg, ops: obp + slg,
+    babip: babip, iso: iso, woba: woba
+  };
+}
+
+function showImport() {
+  document.getElementById('importScreen').classList.remove('hidden');
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('dashboard').classList.remove('visible');
+}
+
+function applyJSON() {
+  var raw = document.getElementById('jsonInput').value.trim();
+  var err = document.getElementById('importErr');
+  err.textContent = '';
+  if (!raw) { err.textContent = 'JSONを入力してください'; return; }
+  var parsed;
+  try { parsed = JSON.parse(raw); } catch(e) { err.textContent = 'JSONパースエラー: ' + e.message; return; }
+
+  // 配列そのまま渡された場合も対応
+  if (Array.isArray(parsed)) { parsed = { data: parsed }; }
+
+  var rawData = parsed.allData || parsed.data || parsed.records || parsed.rows || parsed.pitchData;
+  if (!rawData || !Array.isArray(rawData)) {
+    // トップレベルに配列プロパティを探す
+    var keys = Object.keys(parsed);
+    for (var ki = 0; ki < keys.length; ki++) {
+      if (Array.isArray(parsed[keys[ki]]) && parsed[keys[ki]].length > 0) {
+        rawData = parsed[keys[ki]];
+        break;
+      }
+    }
+  }
+  if (!rawData || !Array.isArray(rawData) || !rawData.length) {
+    err.textContent = 'データ配列が見つかりません。キー名を確認してください（data / allData / records など）。入力されたキー: ' + Object.keys(parsed).join(', ');
+    return;
+  }
+
+  // 1件目を確認
+  var sample = rawData[0];
+  if (!sample.player && !sample.name && !sample.batter) {
+    err.textContent = '選手名フィールド(player/name/batter)が見つかりません。サンプル: ' + JSON.stringify(sample).slice(0, 120);
+    return;
+  }
+
+  var allData = rawData.map(function(r) {
+    return {
+      player: r.player || r.name || r.batter || '不明',
+      result: r.result || r.outcome || '-',
+      batSide: r.batSide || r.side || r.bat_side || 'right',
+      ballType: r.ballType || r.bt || r.ball_type || r.hitType || '-',
+      dir: r.dir || r.direction || r.hitDir || '-',
+      stolenBase: r.stolenBase !== undefined ? r.stolenBase : (r.sb || 0),
+      caughtStealing: r.caughtStealing !== undefined ? r.caughtStealing : (r.cs || 0),
+      rbis: r.rbis || r.rbi || 0,
+      runs: r.runs || r.run || 0,
+      pitchDetails: r.pitchDetails || r.pitches || []
+    };
+  });
+
+  parsed.allData = allData;
+  parsed.playerBatSide = parsed.playerBatSide || parsed.sides || parsed.batSides || {};
+  if (!parsed.players || !parsed.players.length) {
+    var s = {};
+    allData.forEach(function(a) { if (a.player) s[a.player] = true; });
+    parsed.players = Object.keys(s);
+  }
+  if (!Object.keys(parsed.playerBatSide).length) {
+    allData.forEach(function(a) { if (a.player && a.batSide) parsed.playerBatSide[a.player] = a.batSide; });
+  }
+  loadData(parsed);
+}
+
+function loadData(parsed) {
+  DATA = parsed;
+  document.getElementById('importScreen').classList.add('hidden');
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('dashboard').classList.add('visible');
+  currentPlayer = 'ALL'; rankCat = 'batting'; rankMetric = 'avg';
+  document.querySelectorAll('.tab-pane').forEach(function(t) { t.classList.remove('active'); });
+  document.getElementById('tab-overview').classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(function(b, i) { b.classList.remove('active'); if (i === 0) b.classList.add('active'); });
+  buildChips();
+  renderAll();
+}
+
+function buildChips() {
+  var html = '<button class="chip active" onclick="selectPlayer(\'ALL\',this)">全体</button>';
+  DATA.players.forEach(function(p) {
+    var s = DATA.playerBatSide[p] || 'right';
+    html += '<button class="chip" onclick="selectPlayer(\'' + p + '\',this)">' + p + '<span class="bat-ind ' + s + '"></span></button>';
+  });
+  document.getElementById('playerChips').innerHTML = html;
+}
+
+function selectPlayer(name, btn) {
+  currentPlayer = name;
+  document.querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
+  btn.classList.add('active');
+  renderAll();
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'batted') renderBatted();
+  if (name === 'lineup') renderLineup();
+}
+
+function renderOverview() {
+  var pitches = getAllPitches(currentPlayer);
+  var tp = pitches.length || 1;
+  var strikes = pitches.filter(function(p) { return p.type === 'strike'; });
+  var balls = pitches.filter(function(p) { return p.type === 'ball'; });
+  var sT = strikes.length || 1;
+  var bT = balls.length || 1;
+  document.getElementById('pitchActionStats').innerHTML = [
+    {val:tp, lbl:'総投球数', col:'s-ink'},
+    {val:pct(strikes.length/tp), lbl:'ストライク率 (' + strikes.length + '球)', col:'s-red'},
+    {val:pct(balls.length/tp), lbl:'ボール率 (' + balls.length + '球)', col:'s-blue'},
+    {val:pitches.filter(function(p){return p.action==='swing';}).length, lbl:'空振り数', col:'s-amber'},
+    {val:pitches.filter(function(p){return p.action==='foul';}).length, lbl:'ファウル数', col:'s-yellow'}
+  ].map(function(s) {
+    return '<div class="stat-box ' + s.col + '"><div class="stat-val">' + s.val + '</div><div class="stat-lbl">' + s.lbl + '</div></div>';
+  }).join('');
+  var sL = strikes.filter(function(p){return p.action==='look';}).length;
+  var sS = strikes.filter(function(p){return p.action==='swing';}).length;
+  var sF = strikes.filter(function(p){return p.action==='foul';}).length;
+  document.getElementById('strikeBreakdown').innerHTML =
+    makeBd('見逃し', sL/sT, 1, '#c8341c', sL) +
+    makeBd('空振り', sS/sT, 1, '#e05060', sS) +
+    makeBd('ファウル', sF/sT, 1, '#e08020', sF);
+  var bL = balls.filter(function(p){return p.action==='look';}).length;
+  var bS = balls.filter(function(p){return p.action!=='look';}).length;
+  document.getElementById('ballBreakdown').innerHTML =
+    makeBd('見逃し(正解)', bL/bT, 1, '#1c6c3c', bL) +
+    makeBd('空振り(悪球)', bS/bT, 1, '#c8341c', bS);
+  var fp = pitches.filter(function(p){return p.isFirst;});
+  var fpt = fp.length || 1;
+  var fpS = fp.filter(function(p){return p.type==='strike';});
+  var fpSt = fpS.length || 1;
+  document.getElementById('firstPitchStats').innerHTML = [
+    {val:pct(fpS.length/fpt), lbl:'初球ストライク率', col:'s-red'},
+    {val:pct(fp.filter(function(p){return p.type==='ball';}).length/fpt), lbl:'初球ボール率', col:'s-blue'},
+    {val:pct(fpS.filter(function(p){return p.action==='swing'||p.action==='foul'||p.action==='inplay';}).length/fpSt), lbl:'初球S スイング率', col:'s-amber'}
+  ].map(function(s) {
+    return '<div class="stat-box ' + s.col + '"><div class="stat-val">' + s.val + '</div><div class="stat-lbl">' + s.lbl + '</div></div>';
+  }).join('');
+}
+
+function renderPatience() {
+  var players = currentPlayer === 'ALL' ? DATA.players : [currentPlayer];
+  var rows = players.map(function(p) { return calcMetrics(p); }).filter(function(m) { return m && m.pa > 0; });
+  rows.sort(function(a,b) { return b.ballEyeRate - a.ballEyeRate; });
+  document.getElementById('patienceBody').innerHTML = rows.map(function(m, i) {
+    return '<tr><td><span class="rank-num ' + (i < 3 ? 'top' + (i+1) : '') + '">' + (i+1) + '</span>' + m.name + '</td>' +
+      '<td>' + m.pa + '</td>' +
+      '<td class="' + (m.pitchesPerPA >= 4 ? 'hi-g' : '') + '">' + m.pitchesPerPA.toFixed(2) + '</td>' +
+      '<td class="' + (m.ballEyeRate >= .8 ? 'hi-g' : m.ballEyeRate < .6 ? 'hi-r' : '') + '">' + pct(m.ballEyeRate) + '</td>' +
+      '<td class="' + (m.chaseRate > .3 ? 'hi-r' : '') + '">' + pct(m.chaseRate) + '</td>' +
+      '<td class="' + (m.bbRate >= .15 ? 'hi-g' : '') + '">' + pct(m.bbRate) + '</td>' +
+      '<td class="' + (m.soRate >= .25 ? 'hi-r' : '') + '">' + pct(m.soRate) + '</td>' +
+      '<td class="' + (m.bbk >= 1.5 ? 'hi-g' : m.bbk < .5 ? 'hi-r' : '') + '">' + (m.bbk === 99 ? '∞' : m.bbk.toFixed(2)) + '</td></tr>';
+  }).join('');
+  var sorted = rows.slice().sort(function(a,b) { return b.pitchesPerPA - a.pitchesPerPA; });
+  var maxP = sorted.length ? sorted[0].pitchesPerPA : 1;
+  document.getElementById('patienceBars').innerHTML = sorted.map(function(m) {
+    return makeBd(m.name, m.pitchesPerPA / maxP, 1, '#1c4c8c', m.pitchesPerPA.toFixed(2));
+  }).join('');
+}
+
+function renderBatted() {
+  var abs = getABs(currentPlayer).filter(function(a) { return a.ballType && a.ballType !== '-'; });
+  var tot = abs.length || 1;
+  var tC = {}, tH = {};
+  abs.forEach(function(a) {
+    var t = normType(a.ballType) || 'other';
+    tC[t] = (tC[t] || 0) + 1;
+    if (HITS.indexOf(a.result) >= 0) tH[t] = (tH[t] || 0) + 1;
+  });
+  document.getElementById('battedTypeCount').innerHTML = Object.keys(tC).sort(function(a,b){return tC[b]-tC[a];}).map(function(t) {
+    var c = tC[t];
+    return makeBd(TYPE_LABELS[t] || t, c/tot, 1, TYPE_COLORS[t] || '#888', c + '件(' + pct(c/tot) + ')');
+  }).join('');
+  document.getElementById('battedTypeAvg').innerHTML = Object.keys(tC).sort(function(a,b){return tC[b]-tC[a];}).map(function(t) {
+    var c = tC[t], avg = c > 0 ? (tH[t] || 0) / c : 0;
+    return makeBd(TYPE_LABELS[t] || t, avg, .5, TYPE_COLORS[t] || '#888', avg.toFixed(3));
+  }).join('');
+  var dC = {pull:0, cent:0, oppo:0}, dH = {pull:0, cent:0, oppo:0};
+  abs.forEach(function(a) {
+    var side = DATA.playerBatSide[a.player] || a.batSide || 'right';
+    var h = dirToHD(a.dir || '-', side === 'left');
+    if (h) { dC[h]++; if (HITS.indexOf(a.result) >= 0) dH[h]++; }
+  });
+  var dT = dC.pull + dC.cent + dC.oppo || 1;
+  document.getElementById('battedDirCount').innerHTML = ['pull','cent','oppo'].map(function(h) {
+    return makeBd(HD_LABELS[h], dC[h]/dT, 1, HD_COLORS[h], dC[h] + '件(' + pct(dC[h]/dT) + ')');
+  }).join('');
+  document.getElementById('battedDirAvg').innerHTML = ['pull','cent','oppo'].map(function(h) {
+    var avg = dC[h] > 0 ? dH[h] / dC[h] : 0;
+    return makeBd(HD_LABELS[h], avg, .5, HD_COLORS[h], avg.toFixed(3));
+  }).join('');
+  var mapSide = currentPlayer !== 'ALL' ? (DATA.playerBatSide[currentPlayer] || 'right') : 'right';
+  drawField(dC, mapSide === 'left');
+  document.getElementById('fieldCaption').textContent = currentPlayer !== 'ALL'
+    ? currentPlayer + '（' + (mapSide === 'left' ? '左打' : '右打') + '）の打球方向マップ'
+    : '打球方向マップ（全体・右打者基準）';
+  document.getElementById('battedPlayerBody').innerHTML = DATA.players.map(function(p) {
+    var pA = DATA.allData.filter(function(a) { return a.player === p && a.ballType && a.ballType !== '-'; });
+    var n = pA.length; if (!n) return '';
+    var side = DATA.playerBatSide[p] || 'right', isLeft = side === 'left';
+    var grd = pA.filter(function(a){return normType(a.ballType)==='grounder';}).length;
+    var fly = pA.filter(function(a){return normType(a.ballType)==='fly';}).length;
+    var lin = pA.filter(function(a){return normType(a.ballType)==='liner';}).length;
+    var pull = pA.filter(function(a){return dirToHD(a.dir||'-',isLeft)==='pull';}).length;
+    var cent = pA.filter(function(a){return dirToHD(a.dir||'-',isLeft)==='cent';}).length;
+    var oppo = pA.filter(function(a){return dirToHD(a.dir||'-',isLeft)==='oppo';}).length;
+    var hdT = pull + cent + oppo || 1;
+    var gbfb = fly > 0 ? grd / fly : (grd > 0 ? 99 : 0);
+    return '<tr><td>' + p + '<span style="font-size:10px;margin-left:4px;color:' + (isLeft ? 'var(--red)' : 'var(--blue)') + '">' + (isLeft ? '左' : '右') + '</span></td>' +
+      '<td>' + n + '</td><td>' + pct(grd/n) + '</td><td>' + pct(fly/n) + '</td><td>' + pct(lin/n) + '</td>' +
+      '<td style="color:var(--red)">' + pct(pull/hdT) + '</td>' +
+      '<td style="color:var(--blue)">' + pct(cent/hdT) + '</td>' +
+      '<td style="color:var(--green)">' + pct(oppo/hdT) + '</td>' +
+      '<td>' + (gbfb === 99 ? '∞' : gbfb.toFixed(2)) + '</td></tr>';
+  }).join('');
+}
+
+function drawField(hd, isLeft) {
+  var canvas = document.getElementById('fieldCanvas');
+  if (!canvas) return;
+  var W=400, H=380, cx=200, home=355;
+  canvas.width = W; canvas.height = H;
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  var total = hd.pull + hd.cent + hd.oppo || 1;
+  var toRad = function(d) { return d * Math.PI / 180; };
+  var foulL = toRad(-135), foulR = toRad(-45), FEN = 290;
+
+  ctx.fillStyle = '#2a2218'; ctx.fillRect(0,0,W,H);
+  var stripes = ['#3d7a28','#347022'];
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,home,FEN,foulL,foulR); ctx.lineTo(cx,home); ctx.closePath(); ctx.clip();
+  for (var i=0; i<12; i++) {
+    var a = foulL + i*(foulR-foulL)/12, b = foulL + (i+1)*(foulR-foulL)/12;
+    ctx.beginPath(); ctx.moveTo(cx,home); ctx.arc(cx,home,FEN,a,b); ctx.closePath();
+    ctx.fillStyle = stripes[i%2]; ctx.fill();
+  }
+  ctx.restore();
+
+  var lA = {a0:-148,a1:-106}, cA = {a0:-106,a1:-74}, rA = {a0:-74,a1:-32};
+  var zones = isLeft ? [
+    {count:hd.oppo, col:[20,180,80], a0:lA.a0, a1:lA.a1},
+    {count:hd.cent, col:[40,100,220], a0:cA.a0, a1:cA.a1},
+    {count:hd.pull, col:[220,60,30], a0:rA.a0, a1:rA.a1}
+  ] : [
+    {count:hd.pull, col:[220,60,30], a0:lA.a0, a1:lA.a1},
+    {count:hd.cent, col:[40,100,220], a0:cA.a0, a1:cA.a1},
+    {count:hd.oppo, col:[20,180,80], a0:rA.a0, a1:rA.a1}
+  ];
+  zones.forEach(function(z) {
+    var ratio = z.count/total, r = Math.min(FEN-10, 90+ratio*200), alpha = 0.25+ratio*0.45;
+    var g = ctx.createRadialGradient(cx,home,20,cx,home,r);
+    g.addColorStop(0, 'rgba('+z.col+','+(alpha*0.4).toFixed(2)+')');
+    g.addColorStop(0.6, 'rgba('+z.col+','+alpha.toFixed(2)+')');
+    g.addColorStop(1, 'rgba('+z.col+',0.05)');
+    ctx.beginPath(); ctx.moveTo(cx,home); ctx.arc(cx,home,r,toRad(z.a0),toRad(z.a1)); ctx.closePath();
+    ctx.fillStyle = g; ctx.fill();
+  });
+
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,home,FEN,foulL,foulR); ctx.lineTo(cx,home); ctx.closePath(); ctx.clip();
+  ctx.beginPath(); ctx.arc(cx,home,110,foulL,foulR); ctx.lineTo(cx,home); ctx.closePath();
+  var ig = ctx.createRadialGradient(cx,home,60,cx,home,115);
+  ig.addColorStop(0,'#4a9635'); ig.addColorStop(1,'#3d7a28');
+  ctx.fillStyle = ig; ctx.fill();
+  ctx.restore();
+
+  var sq = 88;
+  var pb2 = [cx, home-sq], pb1 = [cx+sq*0.5, home-sq*0.5], pb3 = [cx-sq*0.5, home-sq*0.5];
+
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(pb2[0],pb2[1]); ctx.lineTo(pb1[0],pb1[1]); ctx.lineTo(cx,home+14); ctx.lineTo(pb3[0],pb3[1]); ctx.closePath();
+  var dg = ctx.createRadialGradient(cx,home-20,10,cx,home,sq*1.3);
+  dg.addColorStop(0,'#d4aa72'); dg.addColorStop(0.7,'#c09558'); dg.addColorStop(1,'#a87840');
+  ctx.fillStyle = dg; ctx.fill(); ctx.restore();
+
+  var mY = home - sq*0.5*0.55;
+  var mg = ctx.createRadialGradient(cx,mY,0,cx,mY,14);
+  mg.addColorStop(0,'#d8b47a'); mg.addColorStop(1,'#b88848');
+  ctx.beginPath(); ctx.ellipse(cx,mY,13,9,0,0,Math.PI*2);
+  ctx.fillStyle = mg; ctx.fill(); ctx.strokeStyle='#a87040'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.fillRect(cx-7,mY-2,14,4);
+
+  [pb2,pb1,pb3].forEach(function(bp) {
+    var bg = ctx.createRadialGradient(bp[0],bp[1],0,bp[0],bp[1],18);
+    bg.addColorStop(0,'#d4aa72'); bg.addColorStop(1,'rgba(196,148,80,0)');
+    ctx.beginPath(); ctx.arc(bp[0],bp[1],18,0,Math.PI*2); ctx.fillStyle=bg; ctx.fill();
+  });
+
+  ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+  [[cx,home],pb1,pb2,pb3,[cx,home]].reduce(function(prev,cur) {
+    ctx.beginPath(); ctx.moveTo(prev[0],prev[1]); ctx.lineTo(cur[0],cur[1]); ctx.stroke(); return cur;
+  });
+
+  ctx.beginPath(); ctx.arc(cx,home,FEN+4,foulL,foulR);
+  ctx.strokeStyle='#e8e0c8'; ctx.lineWidth=8; ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,home,FEN+4,foulL,foulR);
+  ctx.strokeStyle='#1a2a5a'; ctx.lineWidth=5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,home,FEN+4,foulL,foulR);
+  ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.lineWidth=1.5; ctx.stroke();
+
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,home,FEN+2,foulL,foulR); ctx.arc(cx,home,FEN-22,foulR,foulL,true); ctx.closePath();
+  var wg = ctx.createRadialGradient(cx,home,FEN-22,cx,home,FEN+2);
+  wg.addColorStop(0,'rgba(160,120,60,0)'); wg.addColorStop(0.3,'rgba(160,120,60,0.5)'); wg.addColorStop(1,'rgba(140,100,40,0.6)');
+  ctx.fillStyle = wg; ctx.fill(); ctx.restore();
+
+  ctx.setLineDash([8,5]); ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(cx,home); ctx.lineTo(cx+Math.cos(foulR)*(FEN+20), home+Math.sin(foulR)*(FEN+20)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,home); ctx.lineTo(cx+Math.cos(foulL)*(FEN+20), home+Math.sin(foulL)*(FEN+20)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  [[cx+Math.cos(foulR)*FEN, home+Math.sin(foulR)*FEN],[cx+Math.cos(foulL)*FEN, home+Math.sin(foulL)*FEN]].forEach(function(pt) {
+    ctx.beginPath(); ctx.arc(pt[0],pt[1],5,0,Math.PI*2); ctx.fillStyle='#f0e040'; ctx.fill();
+    ctx.strokeStyle='#806800'; ctx.lineWidth=1; ctx.stroke();
+  });
+
+  [[pb2[0],pb2[1],'2B'],[pb1[0],pb1[1],'1B'],[pb3[0],pb3[1],'3B']].forEach(function(e) {
+    ctx.save(); ctx.translate(e[0],e[1]); ctx.rotate(Math.PI/4);
+    var bg = ctx.createLinearGradient(-6,-6,6,6); bg.addColorStop(0,'#fff'); bg.addColorStop(1,'#d0d0d0');
+    ctx.fillStyle=bg; ctx.fillRect(-6,-6,12,12); ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.strokeRect(-6,-6,12,12); ctx.restore();
+    ctx.fillStyle='rgba(120,100,80,0.55)'; ctx.font='bold 8px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(e[2], e[0], e[1]+20);
+  });
+
+  ctx.save(); ctx.translate(cx,home);
+  ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(7,0); ctx.lineTo(7,6); ctx.lineTo(-7,6); ctx.lineTo(-7,0); ctx.closePath();
+  var hpg = ctx.createLinearGradient(-7,-8,7,6); hpg.addColorStop(0,'#fff'); hpg.addColorStop(1,'#ccc');
+  ctx.fillStyle=hpg; ctx.fill(); ctx.strokeStyle='#999'; ctx.lineWidth=1; ctx.stroke(); ctx.restore();
+
+  var labels = isLeft ? [
+    {label:'流し', count:hd.oppo, x:cx-170, y:home-160, col:[20,180,80]},
+    {label:'センター', count:hd.cent, x:cx, y:home-255, col:[80,140,240]},
+    {label:'引っ張り', count:hd.pull, x:cx+170, y:home-160, col:[240,80,40]}
+  ] : [
+    {label:'引っ張り', count:hd.pull, x:cx-170, y:home-160, col:[240,80,40]},
+    {label:'センター', count:hd.cent, x:cx, y:home-255, col:[80,140,240]},
+    {label:'流し', count:hd.oppo, x:cx+170, y:home-160, col:[20,180,80]}
+  ];
+  labels.forEach(function(lb) {
+    var r=34, ratio=lb.count/total, cr=lb.col[0], cg=lb.col[1], cb=lb.col[2];
+    var glow = ctx.createRadialGradient(lb.x,lb.y,r*0.5,lb.x,lb.y,r*1.8);
+    glow.addColorStop(0,'rgba('+cr+','+cg+','+cb+',0.35)'); glow.addColorStop(1,'rgba('+cr+','+cg+','+cb+',0)');
+    ctx.beginPath(); ctx.arc(lb.x,lb.y,r*1.8,0,Math.PI*2); ctx.fillStyle=glow; ctx.fill();
+    ctx.beginPath(); ctx.arc(lb.x,lb.y,r,0,Math.PI*2); ctx.fillStyle='rgba(10,10,20,0.82)'; ctx.fill();
+    ctx.strokeStyle='rgba('+cr+','+cg+','+cb+',0.9)'; ctx.lineWidth=2; ctx.stroke();
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='rgb('+cr+','+cg+','+cb+')'; ctx.font='bold 14px monospace'; ctx.fillText(lb.count+'件', lb.x, lb.y-8);
+    ctx.fillStyle='#fff'; ctx.font='bold 11px monospace'; ctx.fillText(pct(ratio,0), lb.x, lb.y+7);
+    ctx.fillStyle='rgba('+cr+','+cg+','+cb+',0.8)'; ctx.font='bold 9px monospace'; ctx.fillText(lb.label, lb.x, lb.y+20);
+  });
+  ctx.textBaseline = 'alphabetic';
+}
+
+var RANK_CATS = {
+  batting: { label:'打撃', metrics:[
+    {key:'avg', lbl:'打率', fmt:function(v){return v.toFixed(3);}, asc:false},
+    {key:'obp', lbl:'出塁率', fmt:function(v){return v.toFixed(3);}, asc:false},
+    {key:'slg', lbl:'長打率', fmt:function(v){return v.toFixed(3);}, asc:false},
+    {key:'ops', lbl:'OPS', fmt:function(v){return v.toFixed(3);}, asc:false},
+    {key:'woba', lbl:'wOBA', fmt:function(v){return v.toFixed(3);}, asc:false},
+    {key:'babip', lbl:'BABIP', fmt:function(v){return v.toFixed(3);}, asc:false},
+    {key:'iso', lbl:'ISO', fmt:function(v){return v.toFixed(3);}, asc:false},
+    {key:'hits', lbl:'安打', fmt:function(v){return v;}, asc:false},
+    {key:'hr', lbl:'本塁打', fmt:function(v){return v;}, asc:false},
+    {key:'rbi', lbl:'打点', fmt:function(v){return v;}, asc:false},
+    {key:'bb', lbl:'四球', fmt:function(v){return v;}, asc:false},
+    {key:'so', lbl:'三振', fmt:function(v){return v;}, asc:true}
+  ]},
+  eye: { label:'選球眼', metrics:[
+    {key:'pitchesPerPA', lbl:'球/打席', fmt:function(v){return v.toFixed(2);}, asc:false},
+    {key:'ballEyeRate', lbl:'選球眼率', fmt:function(v){return pct(v);}, asc:false},
+    {key:'chaseRate', lbl:'悪球スイング率', fmt:function(v){return pct(v);}, asc:true},
+    {key:'strikeSwingRate', lbl:'S球スイング率', fmt:function(v){return pct(v);}, asc:false},
+    {key:'contactRate', lbl:'コンタクト率', fmt:function(v){return pct(v);}, asc:false},
+    {key:'bbRate', lbl:'四球率', fmt:function(v){return pct(v);}, asc:false},
+    {key:'soRate', lbl:'三振率', fmt:function(v){return pct(v);}, asc:true},
+    {key:'bbk', lbl:'BB/K', fmt:function(v){return v===99?'∞':v.toFixed(2);}, asc:false}
+  ]},
+  base: { label:'走塁', metrics:[
+    {key:'sb', lbl:'盗塁', fmt:function(v){return v;}, asc:false},
+    {key:'runs', lbl:'得点', fmt:function(v){return v;}, asc:false}
+  ]}
+};
+
+function buildRankControls() {
+  document.getElementById('rankCatBtns').innerHTML = Object.keys(RANK_CATS).map(function(k) {
+    return '<button class="rcat-btn' + (rankCat===k?' active':'') + '" onclick="setRankCat(\'' + k + '\')">' + RANK_CATS[k].label + '</button>';
+  }).join('');
+  renderMetricBtns();
+}
+function setRankCat(cat) { rankCat=cat; rankMetric=RANK_CATS[cat].metrics[0].key; buildRankControls(); renderSingleRank(); }
+function setRankMetric(key) { rankMetric=key; renderMetricBtns(); renderSingleRank(); }
+function renderMetricBtns() {
+  document.getElementById('rankMetricBtns').innerHTML = RANK_CATS[rankCat].metrics.map(function(m) {
+    return '<button class="rcat-btn' + (rankMetric===m.key?' active':'') + '" onclick="setRankMetric(\'' + m.key + '\')">' + m.lbl + '</button>';
+  }).join('');
+}
+function renderSingleRank() {
+  var metrics = RANK_CATS[rankCat].metrics;
+  var mDef = null;
+  for (var i=0; i<metrics.length; i++) { if (metrics[i].key === rankMetric) { mDef = metrics[i]; break; } }
+  if (!mDef) mDef = metrics[0];
+  var minPA = parseInt(document.getElementById('minPAInput').value, 10) || 0;
+  var allM = DATA.players.map(function(p) { return calcMetrics(p); }).filter(function(m) { return m && m.pa >= Math.max(1, minPA); });
+  var qEl = document.getElementById('qualifiedCount');
+  if (qEl) qEl.textContent = allM.length + '人対象';
+  allM.sort(function(a,b) { return mDef.asc ? (a[rankMetric]||0)-(b[rankMetric]||0) : (b[rankMetric]||0)-(a[rankMetric]||0); });
+  var maxV = 0;
+  allM.forEach(function(m) { if (Math.abs(m[rankMetric]||0) > maxV) maxV = Math.abs(m[rankMetric]||0); });
+  maxV = maxV || 1;
+  document.getElementById('rankChart').innerHTML = '<div class="card">' + allM.map(function(m,i) {
+    var w = (Math.abs(m[rankMetric]||0)/maxV*100).toFixed(1);
+    var col = i===0?'#d4a820':i===1?'#909090':i===2?'#a07050':'#1c4c8c';
+    return '<div class="bd-row" style="grid-template-columns:80px 1fr 70px"><div class="bd-label">' + (['🥇','🥈','🥉'][i]||'') + ' ' + m.name + '</div>' +
+      '<div class="bd-track"><div class="bd-fill" style="width:'+w+'%;background:'+col+'">' + (w>20?mDef.fmt(m[rankMetric]||0):'') + '</div></div>' +
+      '<div class="bd-count" style="font-size:13px;font-weight:700;color:'+col+'">' + mDef.fmt(m[rankMetric]||0) + '</div></div>';
+  }).join('') + '</div>';
+  document.getElementById('rankHead').innerHTML = '<tr><th style="text-align:left">順位 選手</th><th>打席</th>' +
+    metrics.map(function(m) { return '<th>' + m.lbl + '</th>'; }).join('') + '</tr>';
+  document.getElementById('rankBody').innerHTML = allM.map(function(m,i) {
+    return '<tr><td><span class="rank-num ' + (i<3?'top'+(i+1):'') + '">' + (i+1) + '</span>' + m.name + '</td><td>' + m.pa + '</td>' +
+      metrics.map(function(c) { return '<td class="' + (rankMetric===c.key?'hi-b':'') + '">' + c.fmt(m[c.key]||0) + '</td>'; }).join('') + '</tr>';
+  }).join('');
+}
+
+function renderProfile() {
+  var allM = DATA.players.map(function(p) { return calcMetrics(p); }).filter(function(m) { return m && m.pa > 0; });
+  // 選択中の選手を先頭に
+  if (currentPlayer !== 'ALL') {
+    allM.sort(function(a, b) {
+      if (a.name === currentPlayer) return -1;
+      if (b.name === currentPlayer) return 1;
+      return 0;
+    });
+  }
+  function rankOf(key, asc) {
+    var s = allM.slice().sort(function(a,b) { return asc ? (a[key]||0)-(b[key]||0) : (b[key]||0)-(a[key]||0); });
+    var map = {};
+    s.forEach(function(m,i) { map[m.name] = i+1; });
+    return map;
+  }
+  var rAvg=rankOf('avg'), rOPS=rankOf('ops'), rEye=rankOf('ballEyeRate'), rChase=rankOf('chaseRate',true);
+  function rBadge(r) {
+    if (r===1) return '<span style="background:#d4a820;color:#fff;padding:1px 7px;border-radius:2px;font-size:10px;font-weight:700">1位</span>';
+    if (r===2) return '<span style="background:#909090;color:#fff;padding:1px 7px;border-radius:2px;font-size:10px;font-weight:700">2位</span>';
+    if (r===3) return '<span style="background:#a07050;color:#fff;padding:1px 7px;border-radius:2px;font-size:10px;font-weight:700">3位</span>';
+    return '<span style="color:var(--mid);font-size:10px">' + r + '位</span>';
+  }
+  document.getElementById('profileContent').innerHTML = allM.map(function(m) {
+    var abs = DATA.allData.filter(function(a) { return a.player === m.name; });
+    var resCounts = {};
+    abs.forEach(function(a) { resCounts[a.result] = (resCounts[a.result]||0)+1; });
+    var resT = abs.length || 1;
+    var resBar = Object.keys(resCounts).sort(function(a,b){return resCounts[b]-resCounts[a];}).map(function(r) {
+      var c = resCounts[r], w = (c/resT*100).toFixed(1), col = RES_COLORS[r]||'#888';
+      return '<span title="'+(RES_LABELS[r]||r)+': '+c+'件" style="display:inline-block;width:'+w+'%;height:18px;background:'+col+';vertical-align:top"></span>';
+    }).join('');
+    var resLgd = Object.keys(resCounts).sort(function(a,b){return resCounts[b]-resCounts[a];}).map(function(r) {
+      var c=resCounts[r], col=RES_COLORS[r]||'#888';
+      return '<span style="font-size:10px;margin-right:8px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col+';margin-right:3px;vertical-align:middle"></span>'+(RES_LABELS[r]||r)+':'+c+'</span>';
+    }).join('');
+    var side = DATA.playerBatSide[m.name] || 'right';
+    var isLeft = side === 'left';
+
+    // 打球種類
+    var battedAbs = abs.filter(function(a){ return a.ballType && a.ballType !== '-'; });
+    var bN = battedAbs.length || 1;
+    var grd = battedAbs.filter(function(a){return normType(a.ballType)==='grounder';}).length;
+    var fly = battedAbs.filter(function(a){return normType(a.ballType)==='fly';}).length;
+    var lin = battedAbs.filter(function(a){return normType(a.ballType)==='liner';}).length;
+    var gbfb = fly > 0 ? (grd/fly) : (grd > 0 ? 99 : 0);
+
+    // 打球方向
+    var pull=0, cent=0, oppo=0;
+    battedAbs.forEach(function(a){
+      var h = dirToHD(a.dir||'-', isLeft);
+      if(h==='pull') pull++; else if(h==='cent') cent++; else if(h==='oppo') oppo++;
+    });
+    var hdT = pull+cent+oppo || 1;
+
+    // 盗塁成功率
+    var sbTotal = m.sb + (abs.reduce(function(s,a){return s+(a.caughtStealing||0);},0));
+    var sbRate = sbTotal > 0 ? m.sb / sbTotal : null;
+
+    // 初球
+    var fp = getAllPitches(m.name).filter(function(p){return p.isFirst;});
+    var fpt = fp.length || 1;
+    var fpStr = fp.filter(function(p){return p.type==='strike';}).length;
+    var fpSwing = fp.filter(function(p){return p.action==='swing'||p.action==='foul'||p.action==='inplay';}).length;
+
+    function mBox(lbl,val,rank) {
+      return '<div style="background:var(--pale);padding:12px;flex:1;min-width:100px"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px"><div style="font-size:11px;color:var(--mid);font-weight:700">'+lbl+'</div>'+rBadge(rank)+'</div><div style="font-family:\'DM Mono\',monospace;font-size:22px;font-weight:700">'+val+'</div></div>';
+    }
+    function miniStat(lbl,val,col){
+      col=col||'var(--ink)';
+      return '<div style="background:var(--pale);padding:10px;text-align:center"><div style="font-family:\'DM Mono\',monospace;font-size:18px;font-weight:700;color:'+col+'">'+val+'</div><div style="font-size:10px;color:var(--mid);font-weight:700">'+lbl+'</div></div>';
+    }
+    function bdRow(lbl,v,col,disp){
+      var w=(v*100).toFixed(1);
+      return '<div style="display:grid;grid-template-columns:72px 1fr 56px;align-items:center;gap:8px;margin-bottom:6px">'+
+        '<div style="font-size:11px;font-weight:700">'+lbl+'</div>'+
+        '<div style="height:14px;background:var(--pale);border-radius:1px;overflow:hidden"><div style="width:'+Math.min(100,w)+'%;height:100%;background:'+col+'"></div></div>'+
+        '<div style="font-family:\'DM Mono\',monospace;font-size:11px;text-align:right">'+disp+'</div>'+
+      '</div>';
+    }
+
+    return '<div style="background:var(--card);border:1.5px solid var(--border);margin-bottom:24px;overflow:hidden">' +
+      // ヘッダー
+      '<div style="background:var(--ink);color:var(--bg);padding:18px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">' +
+        '<div><div style="font-size:28px;font-weight:900;line-height:1">'+m.name+'</div>' +
+        '<div style="margin-top:5px;display:flex;gap:8px">' +
+          '<span style="background:'+(isLeft?'#c8341c':'#1c4c8c')+';color:#fff;padding:2px 10px;border-radius:2px;font-size:11px;font-weight:700">'+(isLeft?'左打':'右打')+'</span>' +
+          '<span style="background:#ffffff20;padding:2px 10px;border-radius:2px;font-size:11px;font-family:\'DM Mono\',monospace">'+m.pa+'打席 / '+m.ab+'打数</span>' +
+        '</div></div>' +
+        '<div style="margin-left:auto;text-align:right;font-family:\'DM Mono\',monospace">' +
+          '<div style="font-size:44px;font-weight:700;line-height:1">'+m.avg.toFixed(3)+'</div>' +
+          '<div style="font-size:11px;opacity:.6">打率</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:18px 22px">' +
+        // 基本打撃成績グリッド
+        '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid);margin-bottom:8px">基本打撃成績</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:2px;margin-bottom:18px">' +
+          miniStat('出塁率',m.obp.toFixed(3),'var(--blue)')+
+          miniStat('長打率',m.slg.toFixed(3),'var(--green)')+
+          miniStat('OPS',m.ops.toFixed(3),'var(--amber)')+
+          miniStat('wOBA',m.woba.toFixed(3),'var(--red)')+
+          miniStat('BABIP',m.babip.toFixed(3),'var(--ink)')+
+          miniStat('ISO',m.iso.toFixed(3),'var(--mid)')+
+          miniStat('打点',m.rbi,'var(--ink)')+
+          miniStat('本塁打',m.hr,'var(--red)')+
+          miniStat('二塁打',m.doubles,'var(--blue)')+
+          miniStat('三塁打',m.triples,'var(--green)')+
+          miniStat('安打',m.hits,'var(--ink)')+
+          miniStat('四球',m.bb,'var(--blue)')+
+          miniStat('三振',m.so,'var(--red)')+
+          miniStat('盗塁',m.sb,'var(--green)')+
+          miniStat('得点',m.runs,'var(--ink)')+
+        '</div>' +
+
+        // 3カラム詳細
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:18px">' +
+
+          // 選球眼
+          '<div style="background:var(--pale);padding:14px;border-radius:2px">' +
+            '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid);margin-bottom:10px">選球眼</div>' +
+            bdRow('選球眼率',m.ballEyeRate,'#1c6c3c',pct(m.ballEyeRate))+
+            bdRow('悪球空振',m.chaseRate,'#c8341c',pct(m.chaseRate))+
+            bdRow('四球率',m.bbRate,'#1c4c8c',pct(m.bbRate))+
+            bdRow('三振率',m.soRate,'#c8341c',pct(m.soRate))+
+            '<div style="font-size:11px;margin-top:8px;line-height:2;font-family:\'DM Mono\',monospace">'+
+              '<span style="color:var(--mid)">球/打席 </span><strong>'+m.pitchesPerPA.toFixed(2)+'</strong>　'+
+              '<span style="color:var(--mid)">BB/K </span><strong>'+(m.bbk===99?'∞':m.bbk.toFixed(2))+'</strong>'+
+            '</div>'+
+          '</div>' +
+
+          // 打球傾向
+          '<div style="background:var(--pale);padding:14px;border-radius:2px">' +
+            '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid);margin-bottom:10px">打球傾向</div>' +
+            bdRow('ゴロ%',bN>0?grd/bN:0,'#b06010',pct(grd/bN))+
+            bdRow('フライ%',bN>0?fly/bN:0,'#1c4c8c',pct(fly/bN))+
+            bdRow('ライナー%',bN>0?lin/bN:0,'#1c6c3c',pct(lin/bN))+
+            bdRow('引っ張り%',pull/hdT,'#c8341c',pct(pull/hdT))+
+            bdRow('センター%',cent/hdT,'#1c4c8c',pct(cent/hdT))+
+            bdRow('流し%',oppo/hdT,'#1c6c3c',pct(oppo/hdT))+
+            '<div style="font-size:11px;margin-top:8px;font-family:\'DM Mono\',monospace">'+
+              '<span style="color:var(--mid)">GB/FB </span><strong>'+(gbfb===99?'∞':gbfb.toFixed(2))+'</strong>'+
+            '</div>'+
+          '</div>' +
+
+          // 初球・走塁
+          '<div style="background:var(--pale);padding:14px;border-radius:2px">' +
+            '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid);margin-bottom:10px">初球・走塁</div>' +
+            bdRow('初球S率',fpStr/fpt,'#c8341c',pct(fpStr/fpt))+
+            bdRow('初球スイング',fpSwing/fpt,'#b06010',pct(fpSwing/fpt))+
+            '<div style="margin-top:12px;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--mid);margin-bottom:6px">走塁</div>'+
+            '<div style="font-size:12px;line-height:2;font-family:\'DM Mono\',monospace">'+
+              '<div><span style="color:var(--mid)">盗塁 </span><strong style="color:var(--green)">'+m.sb+'</strong>　<span style="color:var(--mid)">盗塁刺 </span><strong style="color:var(--red)">'+(sbTotal-m.sb)+'</strong></div>'+
+              '<div><span style="color:var(--mid)">盗塁成功率 </span><strong>'+(sbRate===null?'---':pct(sbRate))+'</strong></div>'+
+              '<div><span style="color:var(--mid)">得点 </span><strong>'+m.runs+'</strong></div>'+
+            '</div>'+
+          '</div>' +
+
+        '</div>' +
+
+        // KEY指標チーム内順位
+        '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid);margin-bottom:8px">KEY指標（チーム内順位）</div>' +
+        '<div style="display:flex;gap:2px;flex-wrap:wrap;margin-bottom:16px">' +
+          mBox('打率',m.avg.toFixed(3),rAvg[m.name]) +
+          mBox('OPS',m.ops.toFixed(3),rOPS[m.name]) +
+          mBox('選球眼率',pct(m.ballEyeRate),rEye[m.name]) +
+          mBox('悪球空振率',pct(m.chaseRate),rChase[m.name]) +
+        '</div>' +
+
+        // 結果内訳
+        '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--mid);margin-bottom:8px">結果内訳</div>' +
+        '<div style="background:var(--pale);border-radius:2px;overflow:hidden;height:18px;margin-bottom:6px">'+resBar+'</div>' +
+        '<div style="line-height:2">'+resLgd+'</div>' +
+      '</div></div>';
+  }).join('');
+}
+
+function renderAll() {
+  renderOverview();
+  renderPatience();
+  renderBatted();
+  buildRankControls();
+  renderSingleRank();
+  renderProfile();
+  var m = calcMetrics(currentPlayer);
+  var abs = getABs(currentPlayer);
+  document.getElementById('headerMeta').innerHTML =
+    (currentPlayer === 'ALL' ? '全選手' : currentPlayer) + ' | ' + abs.length + '打席 / ' + m.totalP + '球<br>' +
+    '打率 ' + m.avg.toFixed(3) + ' OPS ' + m.ops.toFixed(3) + '<br>' +
+    '<button class="reload-btn" onclick="showImport()">⟳ データ変更</button>';
+}
+
+/* ===== LINEUP ===== */
+var lineupOrder = [null,null,null,null,null,null,null,null,null]; // 9 slots
+
+function renderLineup() {
+  if (!DATA) return;
+  var pool = document.getElementById('lineupPlayerPool');
+  var orderEl = document.getElementById('lineupOrder');
+  var inLineup = lineupOrder.filter(Boolean);
+
+  // pool
+  pool.innerHTML = DATA.players.map(function(p) {
+    var idx = lineupOrder.indexOf(p);
+    var inUse = idx >= 0;
+    var m = calcMetrics(p);
+    var side = DATA.playerBatSide[p] || 'right';
+    return '<div onclick="lineupPoolClick(\''+p+'\')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:'+(inUse?'var(--pale)':'var(--card)')+';border:1.5px solid '+(inUse?'var(--ink)':'var(--border)')+';border-radius:2px;cursor:pointer;transition:border-color .15s">' +
+      '<span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:'+(inUse?'var(--ink)':'var(--pale)')+';color:'+(inUse?'var(--bg)':'var(--mid)')+';text-align:center;line-height:18px;font-size:10px;font-weight:700;font-family:\'DM Mono\',monospace">'+(inUse?idx+1:'')+'</span>' +
+      '<span style="font-weight:700;font-size:13px;flex:1">'+p+'</span>' +
+      '<span style="font-size:10px;color:'+(side==='left'?'var(--red)':'var(--blue)')+'">'+( side==='left'?'左':'右')+'</span>' +
+      '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--mid)">OPS '+m.ops.toFixed(3)+'</span>' +
+    '</div>';
+  }).join('');
+
+  // order slots
+  var nums = ['1番','2番','3番','4番','5番','6番','7番','8番','9番'];
+  orderEl.innerHTML = lineupOrder.map(function(p, i) {
+    if (p) {
+      var m = calcMetrics(p);
+      var side = DATA.playerBatSide[p] || 'right';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--ink);color:var(--bg);border-radius:2px">' +
+        '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;min-width:28px">'+(i+1)+'番</span>' +
+        '<span style="font-weight:700;font-size:14px;flex:1">'+p+'</span>' +
+        '<span style="font-size:10px;opacity:.7">'+( side==='left'?'左':'右')+'</span>' +
+        '<span style="font-family:\'DM Mono\',monospace;font-size:11px;opacity:.8">OPS '+m.ops.toFixed(3)+'</span>' +
+        '<button onclick="removeFromLineup('+i+')" style="background:rgba(255,255,255,.15);border:none;color:var(--bg);cursor:pointer;padding:2px 8px;border-radius:2px;font-size:11px;font-weight:700">✕</button>' +
+      '</div>';
+    } else {
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--pale);border:1.5px dashed var(--border);border-radius:2px;color:var(--mid)">' +
+        '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;min-width:28px">'+(i+1)+'番</span>' +
+        '<span style="font-size:12px">未選択</span>' +
+      '</div>';
+    }
+  }).join('');
+
+  var filled = lineupOrder.filter(Boolean).length;
+  var sec = document.getElementById('lineupChartSection');
+  if (filled === 9) {
+    sec.style.display = 'block';
+    renderLineupChart();
+  } else {
+    sec.style.display = 'none';
+  }
+}
+
+function lineupPoolClick(p) {
+  var idx = lineupOrder.indexOf(p);
+  if (idx >= 0) {
+    lineupOrder[idx] = null;
+  } else {
+    var empty = lineupOrder.indexOf(null);
+    if (empty === -1) return; // full
+    lineupOrder[empty] = p;
+  }
+  renderLineup();
+}
+
+function removeFromLineup(i) {
+  lineupOrder[i] = null;
+  renderLineup();
+}
+
+function clearLineup() {
+  lineupOrder = [null,null,null,null,null,null,null,null,null];
+  renderLineup();
+}
+
+function renderLineupChart() {
+  var players = lineupOrder.filter(Boolean);
+  var metrics = players.map(function(p) { return calcMetrics(p); });
+  var labels = players.map(function(p, i) { return (i+1)+'番 '+p; });
+
+  var ops  = metrics.map(function(m){ return +m.ops.toFixed(3); });
+  var avg  = metrics.map(function(m){ return +m.avg.toFixed(3); });
+  var obp  = metrics.map(function(m){ return +m.obp.toFixed(3); });
+  var slg  = metrics.map(function(m){ return +m.slg.toFixed(3); });
+
+  var canvas = document.getElementById('lineupChart');
+  var ctx = canvas.getContext('2d');
+
+  // destroy old chart if exists
+  if (window._lineupChartInst) { window._lineupChartInst.destroy(); }
+
+  window._lineupChartInst = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label:'OPS',  data:ops,  borderColor:'#c8341c', backgroundColor:'rgba(200,52,28,.08)', borderWidth:2.5, pointRadius:5, pointBackgroundColor:'#c8341c', tension:.3 },
+        { label:'打率', data:avg,  borderColor:'#1c4c8c', backgroundColor:'rgba(28,76,140,.08)', borderWidth:2,   pointRadius:4, pointBackgroundColor:'#1c4c8c', tension:.3 },
+        { label:'出塁率',data:obp, borderColor:'#1c6c3c', backgroundColor:'rgba(28,108,60,.06)', borderWidth:2,   pointRadius:4, pointBackgroundColor:'#1c6c3c', tension:.3, borderDash:[5,4] },
+        { label:'長打率',data:slg, borderColor:'#b06010', backgroundColor:'rgba(176,96,16,.06)', borderWidth:2,   pointRadius:4, pointBackgroundColor:'#b06010', tension:.3, borderDash:[3,3] }
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ position:'top', labels:{ font:{family:"'DM Mono',monospace", size:12}, boxWidth:18 } },
+        tooltip:{ callbacks:{ label:function(c){ return c.dataset.label+': '+c.parsed.y.toFixed(3); } } }
+      },
+      scales:{
+        x:{ grid:{color:'rgba(0,0,0,.06)'}, ticks:{ font:{family:"'Zen Kaku Gothic New',sans-serif", size:11} } },
+        y:{ grid:{color:'rgba(0,0,0,.06)'}, ticks:{ font:{family:"'DM Mono',monospace", size:11}, callback:function(v){return v.toFixed(3);} }, suggestedMin:0, suggestedMax:1.2 }
+      }
+    }
+  });
+
+  // table
+  document.getElementById('lineupTableBody').innerHTML = players.map(function(p, i) {
+    var m = calcMetrics(p);
+    var side = DATA.playerBatSide[p] || 'right';
+    return '<tr>' +
+      '<td style="font-family:\'DM Mono\',monospace;font-weight:700;color:var(--red)">'+(i+1)+'番</td>' +
+      '<td>'+p+'<span style="font-size:10px;margin-left:4px;color:'+(side==='left'?'var(--red)':'var(--blue)')+'">'+( side==='left'?'左':'右')+'</span></td>' +
+      '<td>'+m.pa+'</td>' +
+      '<td class="hi-b">'+m.avg.toFixed(3)+'</td>' +
+      '<td>'+m.obp.toFixed(3)+'</td>' +
+      '<td>'+m.slg.toFixed(3)+'</td>' +
+      '<td class="hi-r" style="font-weight:700">'+m.ops.toFixed(3)+'</td>' +
+      '<td>'+m.hr+'</td>' +
+      '<td>'+m.rbi+'</td>' +
+      '<td>'+pct(m.bbRate)+'</td>' +
+      '<td>'+pct(m.soRate)+'</td>' +
+    '</tr>';
+  }).join('');
+}
+
+// Auto-load embedded data
+(function() {
+  var embedded = {"players":["小椋","上山","笠","大塚","阿部","助っ人１","助っ人２","田村","北川竜","佐々木jr","北川桂","田北","佐々木","岡野","北川凌","西田","瀬戸","岩田","橋目"],"playerBatSide":{"小椋":"right","上山":"left","笠":"right","大塚":"right","阿部":"left","助っ人１":"left","助っ人２":"right","田村":"left","北川竜":"right","佐々木jr":"left","北川桂":"right","田北":"left","佐々木":"right","岡野":"left","北川凌":"left","西田":"left","瀬戸":"right","岩田":"right","橋目":"right"},"allData":[]};
+  var raw = {"players":["小椋","上山","笠","大塚","阿部","助っ人１","助っ人２","田村","北川竜","佐々木jr","北川桂","田北","佐々木","岡野","北川凌","西田","瀬戸","岩田","橋目"],"sides":{"小椋":"right","上山":"left","笠":"right","大塚":"right","阿部":"left","助っ人１":"left","助っ人２":"right","田村":"left","北川竜":"right","佐々木jr":"left","北川桂":"right","田北":"left","佐々木":"right","岡野":"left","北川凌":"left","西田":"left","瀬戸":"right","岩田":"right","橋目":"right"},"data":[{"player":"小椋","side":"right","pitches":4,"balls":4,"strikes":0,"pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"swing"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"error","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"swing"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"error","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"助っ人１","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"right","result":"single","rbis":2,"runs":0,"sb":0,"cs":0},{"player":"助っ人２","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"swing"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"double","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"助っ人１","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"double","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"助っ人２","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"right","result":"single","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"swing"},{"type":"ball","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"right","result":"single","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"single","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"助っ人１","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"助っ人２","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"error","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"double","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"right","result":"single","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"swing"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"single","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田北","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"single","rbis":2,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"homerun","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"swing"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"triple","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"田北","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"right","result":"single","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"hbp","rbis":0,"runs":0,"sb":1,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"swing"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"catcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田北","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":1,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"foul"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田北","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"sacrificefly","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"hbp","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"left","result":"single","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岡野","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"double","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"single","rbis":2,"runs":1,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"double","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"triple","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岡野","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"hbp","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"error","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"triple","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"left","result":"single","rbis":0,"runs":1,"sb":2,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"homerun","rbis":2,"runs":1,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"double","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"error","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"strike","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"double","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"right","result":"double","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"swing"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"double","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"hbp","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"error","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"right","result":"single","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"error","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"double","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"out","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"田北","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"single","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"double","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"single","rbis":2,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"double","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"single","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"left","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"瀬戸","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"fielderschoice","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"single","rbis":2,"runs":1,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"homerun","rbis":2,"runs":1,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"center","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"swing"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"single","rbis":0,"runs":0,"sb":0,"cs":1},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"homerun","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"瀬戸","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"left","result":"single","rbis":0,"runs":0,"sb":0,"cs":1},{"player":"上山","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岩田","side":"right","pitchDetails":[{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"橋目","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"homerun","rbis":2,"runs":1,"sb":0,"cs":0},{"player":"岩田","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"single","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"橋目","side":"right","pitchDetails":[{"type":"ball","action":"swing"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"center","result":"single","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"岡野","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"triple","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"center","result":"single","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"homerun","rbis":2,"runs":1,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"error","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"left","result":"single","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岩田","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"center","result":"homerun","rbis":3,"runs":1,"sb":0,"cs":0},{"player":"橋目","side":"right","pitchDetails":[{"type":"strike","action":"swing"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岡野","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"left","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"catcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"right","result":"triple","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岩田","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"橋目","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"swing"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岡野","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"second","result":"single","rbis":0,"runs":0,"sb":1,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"大塚","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"double","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"center","result":"single","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"right","result":"double","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"double","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"阿部","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"single","rbis":0,"runs":0,"sb":1,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"double","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"single","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"西田","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"single","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"hbp","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"sacrifice","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"hbp","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田北","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"first","result":"out","rbis":0,"runs":0,"sb":1,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"田村","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"single","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"strike","action":"swing"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"center","result":"single","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岩田","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"short","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"right","result":"single","rbis":0,"runs":0,"sb":1,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"pitcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"swing"}],"bt":"liner","dir":"center","result":"single","rbis":0,"runs":0,"sb":1,"cs":0},{"player":"瀬戸","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"ball","action":"foul"},{"type":"strike","action":"look"}],"bt":"-","dir":"-","result":"strikeout","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岩田","side":"right","pitchDetails":[{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"catcher","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"left","result":"single","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"strike","action":"swing"}],"bt":"grounder","dir":"third","result":"doubleplay","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"strike","action":"inplay"}],"bt":"liner","dir":"left","result":"homerun","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"hbp","rbis":0,"runs":1,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"right","result":"homerun","rbis":2,"runs":1,"sb":0,"cs":0},{"player":"瀬戸","side":"right","pitchDetails":[{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"liner","dir":"right","result":"homerun","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"佐々木","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"岩田","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"swing"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":1,"sb":1,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"double","rbis":1,"runs":0,"sb":0,"cs":0},{"player":"笠","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"error","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川桂","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"foul"},{"type":"ball","action":"look"}],"bt":"-","dir":"-","result":"walk","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川凌","side":"left","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"foul"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"佐々木jr","side":"left","pitchDetails":[{"type":"strike","action":"foul"},{"type":"ball","action":"look"},{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"third","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"瀬戸","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"北川竜","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"left","result":"homerun","rbis":1,"runs":1,"sb":0,"cs":0},{"player":"岩田","side":"right","pitchDetails":[{"type":"ball","action":"look"},{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"grounder","dir":"short","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"上山","side":"left","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0},{"player":"小椋","side":"right","pitchDetails":[{"type":"strike","action":"look"},{"type":"strike","action":"inplay"}],"bt":"fly","dir":"second","result":"out","rbis":0,"runs":0,"sb":0,"cs":0}]};
+  var allData = raw.data.map(function(r) {
+    return {
+      player: r.player, result: r.result,
+      batSide: r.side || 'right',
+      ballType: r.bt || '-',
+      dir: r.dir || '-',
+      stolenBase: r.sb || 0,
+      caughtStealing: r.cs || 0,
+      rbis: r.rbis || 0,
+      runs: r.runs || 0,
+      pitchDetails: (r.pitchDetails || []).map(function(p) { return {type:p.type, action:p.action}; })
+    };
+  });
+  embedded.allData = allData;
+  loadData(embedded);
+})();
+</script>
+</body>
+</html>
